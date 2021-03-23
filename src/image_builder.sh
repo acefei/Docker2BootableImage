@@ -59,6 +59,8 @@ RUN yum update -y \
 FROM centos:7.9.2009
 COPY --from=0 /boot/vmlinuz /boot/vmlinuz
 COPY --from=0 /boot/initrd.img /boot/initrd.img
+RUN sed -i 's!/agetty!/agetty --autologin root!' /lib/systemd/system/serial-getty@.service \
+    && cp /lib/systemd/system/serial-getty@.service /etc/systemd/system/getty.target.wants/serial-getty@ttyS0.service
 EOF
 
     docker export -o $rootfs_tarball $(docker run -d $target /bin/true)

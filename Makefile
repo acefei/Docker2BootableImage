@@ -29,3 +29,6 @@ dev-env: base ## enter container to debug code
 
 image: base ## generate bootable image
 	$(DOCKER_RUN) bash $(SH_TRACE) src/image_builder.sh
+
+bootup: src/linux.img ## boot up the bootable image
+	sudo qemu-system-x86_64 -hda $< -curses
