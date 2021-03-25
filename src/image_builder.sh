@@ -85,6 +85,8 @@ create_partitioned_image() {
 
 create_grub_cfg() {
     # based on https://github.com/buildroot/buildroot/blob/master/boot/grub2/grub.cfg
+    # add rw into kernel parameter to mount root device read-write on boot
+    # more details find https://www.kernel.org/doc/html/latest/admin-guide/kernel-parameters.html
     local grub_cfg=${1:-grub.cfg}
     cat > $grub_cfg <<EOF
 set default="0"
@@ -92,7 +94,7 @@ set timeout="3"
 
 menuentry "Appliance Root" {
     search --label $root_label --set root
-    linux /boot/vmlinuz root=PARTUUID=$root_partition_uuid console=tty0 console=ttyS0
+    linux /boot/vmlinuz root=PARTUUID=$root_partition_uuid rw console=tty0 console=ttyS0
     initrd /boot/initrd.img
 }
 EOF
