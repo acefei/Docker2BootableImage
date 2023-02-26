@@ -52,7 +52,7 @@ RUN yum update -y \
     && KERNEL_PATH=$(rpm -ql kernel | grep '/boot/vmlinuz') \
     && INITRAMFS_PATH=$(rpm -ql kernel | grep initramfs) \
     && KERNEL_VERSION=${KERNEL_PATH#*-} \
-    && dracut --filesystems ext4 -f $INITRAMFS_PATH $KERNEL_VERSION \
+    && dracut --filesystems ext4 --add-drivers xen-blkfront --add lvm -f $INITRAMFS_PATH $KERNEL_VERSION \
     && cp $KERNEL_PATH /boot/vmlinuz \
     && cp $INITRAMFS_PATH /boot/initrd.img
 
@@ -77,10 +77,11 @@ create_partitioned_image() {
     # Create partition layout, find the typecode by sgdisk --list-types
      sgdisk --clear \
             --new 1::+1M --typecode=1:ef02 --change-name=1:'grub' \
-            --new $rootfs_partition_num::-0 --typecode=$rootfs_partition_num:8300 \
-                                            --change-name=$rootfs_partition_num:'rootfs' \
-                                            --partition-guid=$rootfs_partition_num:$root_partition_uuid \
-                  $bootable_img
+            --new $rootfs_partition_num::-0 \
+            --typecode=$rootfs_partition_num:8300 \
+            --change-name=$rootfs_partition_num:'rootfs' \
+            --partition-guid=$rootfs_partition_num:$root_partition_uuid \
+            $bootable_img
 }
 
 create_grub_cfg() {
@@ -100,7 +101,27 @@ menuentry "Appliance Root" {
 EOF
 }
 
-# run as subshell with kpartx
+create_lvm_vol() {
+    local partition=$1
+    pvcreate $partition
+    vgcreate root_vg $partition
+    lvcreate root centos $((disk_size*K-4))
+
+    mkfs ext4 /dev/mapper/centos-root
+    mount /dev/mapper/centos-root /
+    tar-in $rootfs_tarball / $compress_args
+    umount /
+    mkfs.ext4 -F -L $root_label 
+
+    # Mount the filesystem
+    mkdir $mount_point
+    mount $rootfs_partition $mount_point
+    clean_up_cmds=$clean_up_cmds';umount $mount_point'
+
+    # Copy in the files from rootfs tarball
+    tar xf $rootfs_tarball -C $mount_point
+}
+
 install_grub2() (
     # losetup -P to add partition mappings on /dev/loop[0-7]pN, just like `kpartx -a` that add mappings under /dev/mapper.
     local loopdev=$(losetup -P -f --show "$bootable_img")
@@ -111,16 +132,9 @@ install_grub2() (
     sleep 2
 
     # p2 means partition 2 which created above for Linux root filesystem
+    # Configuring an LVM Volume with an ext4 File System
     rootfs_partition=${loopdev}p2
-    mkfs.ext4 -F -L $root_label $rootfs_partition
-
-    # Mount the filesystem
-    mkdir $mount_point
-    mount $rootfs_partition $mount_point
-    clean_up_cmds=$clean_up_cmds';umount $mount_point'
-
-    # Copy in the files from rootfs tarball
-    tar xf $rootfs_tarball -C $mount_point
+    create_lvm_vol $rootfs_partition
 
     # ref https://www.gnu.org/software/grub/manual/grub/html_node/Installing-GRUB-using-grub_002dinstall.html
     grub2-install --root-directory=$mount_point $loopdev
