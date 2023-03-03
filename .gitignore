@@ -1,4 +1,6 @@
 *.qcow2
+*.image
 *.img
 *.xva
 images/
+
